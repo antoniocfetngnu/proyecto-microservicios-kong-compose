@@ -1,0 +1,17 @@
+# Ignorar todas las carpetas de microservicios
+users-api/
+posts-api/
+media-service/
+interactions-service/
+
+# Ignorar carpeta donde estás guardando imágenes o otros recursos locales
+dockerImages/
+
+# Ignorar archivos típicos
+node_modules/
+.env
+*.log
+
+# Ignorar todo excepto los YAML principales (opcional)
+# Si quieres ignorar TODO el contenido excepto tus archivos:
+#

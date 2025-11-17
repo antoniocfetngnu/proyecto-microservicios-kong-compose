@@ -1,0 +1,260 @@
+_format_version: "3.0"
+
+services:
+  # Users Service (UPDATED)
+  - name: users-service
+    url: http://users-service:3001
+    routes:
+      # Public auth routes (no JWT required)
+      - name: auth-public-routes
+        paths:
+          - /api/auth/register
+          - /api/auth/login
+          - /api/auth/logout
+        strip_path: false
+
+      - name: auth-protected-routes
+        paths:
+          - /api/auth/me
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token  
+
+      # Protected user routes
+      - name: users-routes
+        paths:
+          - /api/users
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+      # Protected follower routes
+      - name: followers-routes
+        paths:
+          - /api/followers
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token   
+
+      # Protected GraphQL route
+      - name: users-graphql-route
+        paths:
+          - /users-graphql
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+          - name: request-transformer
+            config:
+              replace:
+                uri: /graphql
+
+
+
+  # Interactions Service (unchanged)
+  - name: interactions-service
+    url: http://interactions-service:3000
+    routes:
+      - name: interactions-api-routes
+        paths:
+          - /api/comments
+          - /api/comments/*
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      - name: interactions-graphql-route
+        paths:
+          - /interactions-graphql
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+          - name: request-transformer
+            config:
+              replace:
+                uri: /graphql
+
+  # Posts Service (FIXED - Split public and protected routes)
+  - name: posts-service
+    url: http://posts-service:3000
+    routes:
+      # Public routes (no JWT required) - View posts
+      - name: posts-public-view-routes
+        paths:
+          - /api/posts/health
+        strip_path: false
+        methods:
+          - GET
+
+      # Public GET for all posts and specific post (no auth needed to view)
+      - name: posts-public-get-routes
+        paths:
+          - /api/posts
+        strip_path: false
+        methods:
+          - GET
+        # Note: This will match /api/posts and /api/posts/:id but NOT /api/posts/my-posts
+
+      # Protected routes - My posts (require JWT)
+      - name: posts-my-posts-route
+        paths:
+          - /api/posts/my-posts
+        strip_path: false
+        methods:
+          - GET
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      # Protected routes - Create, Update, Delete (require JWT)
+      - name: posts-protected-write-routes
+        paths:
+          - /api/posts
+        strip_path: false
+        methods:
+          - POST
+          - PUT
+          - DELETE
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      - name: posts-docs-route
+        paths:
+          - /posts-docs
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+          - name: request-transformer
+            config:
+              replace:
+                uri: /api/docs
+
+  # Media Service (NEW)
+  - name: media-service
+    url: http://media-service:5000
+    routes:
+      - name: media-api-routes
+        paths:
+          - /api/media
+          - /api/media/*
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      - name: media-docs-route
+        paths:
+          - /media-docs
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+          - name: request-transformer
+            config:
+              replace:
+                uri: /docs
+
+      - name: media-graphql-route
+        paths:
+          - /media-graphql
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+          - name: request-transformer
+            config:
+              replace:
+                uri: /graphql
+
+consumers:
+  - username: jwt-issuer
+    jwt_secrets:
+      - key: jwt-issuer-key
+        algorithm: HS256
+        secret: "your-super-secret-jwt-key-change-in-production"
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:5173"
+      credentials: true
+      max_age: 3600

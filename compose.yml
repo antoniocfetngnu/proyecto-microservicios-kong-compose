@@ -1,0 +1,256 @@
+version: "3.8"
+
+services:
+  # Kong Gateway (unchanged)
+  kong:
+    image: kong:3.4
+    container_name: kong
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./kong.yml:/kong/declarative/kong.yml
+    networks:
+      - kong-net
+    depends_on:
+      - users-service
+      - interactions-service
+      - posts-service
+      - media-service
+
+  # PostgreSQL Database (unchanged)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: usersdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d usersdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kong-net
+
+  # MongoDB for Interactions (unchanged)
+  mongo:
+    image: mongo:7
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - kong-net
+
+  # MongoDB for Posts Service (unchanged)
+  posts-mongo:
+    image: mongo:6
+    container_name: posts-mongo
+    restart: unless-stopped
+    volumes:
+      - posts_mongo_data:/data/db
+    ports:
+      - "27018:27017"
+    networks:
+      - kong-net
+
+  # PostgreSQL for Media Service (NEW)
+  media-postgres:
+    image: postgres:15
+    container_name: media-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mediosdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"
+    volumes:
+      - media_postgres_data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO for Media Service (NEW)
+  minio:
+    image: minio/minio:latest
+    container_name: media-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Users Microservice (unchanged)
+  users-service:
+    build:
+      context: ./users-api
+      dockerfile: Dockerfile
+    container_name: users-service
+    environment:
+      DATABASE_URL: "host=postgres user=myuser password=mypassword dbname=usersdb port=5432 sslmode=disable"
+      JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+      PORT: "3001"
+      ENVIRONMENT: "development"
+    networks:
+      - kong-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3001/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Interactions Microservice (unchanged)
+  interactions-service:
+    build:
+      context: ./interactions-service
+      dockerfile: Dockerfile
+    container_name: interactions-service
+    environment:
+      PORT: "3000"
+      MONGO_URL: "mongodb://mongo:27017/devspace"
+      NODE_ENV: "development"
+    networks:
+      - kong-net
+    depends_on:
+      mongo:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Posts Microservice (UPDATED)
+  posts-service:
+    build:
+      context: ./posts-api
+      dockerfile: Dockerfile
+    container_name: posts-service
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      MONGO_URI: "mongodb://posts-mongo:27017/posts-db"
+      USERS_GRPC_URL: "users-service:50051"  # NEW: gRPC connection
+    networks:
+      - kong-net
+    depends_on:
+      posts-mongo:
+        condition: service_started
+      users-service:  # NEW: Wait for users service
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/api/posts/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Media Microservice (FIXED INDENTATION)
+  media-service:
+    build:
+      context: ./media-service
+      dockerfile: Dockerfile
+    container_name: media-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@media-postgres:5432/mediosdb"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin123"
+      MINIO_BUCKET: "micro-medios"
+      MINIO_EXTERNAL_URL: "http://localhost:9000"  # Add this line
+      FLASK_ENV: "development"
+    networks:
+      - kong-net
+    depends_on:
+      media-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:5000/api/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  kong-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
+  posts_mongo_data:
+  media_postgres_data:  # New volume for media PostgreSQL
+  minio_data:  # New volume for MinIO
