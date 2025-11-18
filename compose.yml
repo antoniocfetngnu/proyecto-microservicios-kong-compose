@@ -14,6 +14,9 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_DNS_RESOLVER: "127.0.0.11"  # Docker's internal DNS
+    dns:
+      - 127.0.0.11  # Docker's internal DNS
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -160,15 +163,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:3001/health || exit 1",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/users/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -233,15 +228,7 @@ services:
       users-service:  # NEW: Wait for users service
         condition: service_started
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:3000/api/posts/health || exit 1",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/posts/health"]
       interval: 30s
       timeout: 10s
       retries: 3
