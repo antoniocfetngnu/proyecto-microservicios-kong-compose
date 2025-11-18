@@ -12,6 +12,4 @@ node_modules/
 .env
 *.log
 
-# Ignorar todo excepto los YAML principales (opcional)
-# Si quieres ignorar TODO el contenido excepto tus archivos:
-#
+elasticsearch_data/

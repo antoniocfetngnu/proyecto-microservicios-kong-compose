@@ -26,6 +26,11 @@ services:
       - interactions-service
       - posts-service
       - media-service
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "kong"  
 
   # PostgreSQL Database (unchanged)
   postgres:
@@ -46,6 +51,11 @@ services:
       start_period: 10s
     networks:
       - kong-net
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "postgres-users"  
 
   # MongoDB for Interactions (unchanged)
   mongo:
@@ -57,6 +67,11 @@ services:
       - mongo_data:/data/db
     networks:
       - kong-net
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "mongo-interactions"  
 
   # MongoDB for Posts Service (unchanged)
   posts-mongo:
@@ -69,6 +84,11 @@ services:
       - "27018:27017"
     networks:
       - kong-net
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "posts-mongo"  
 
   # PostgreSQL for Media Service (NEW)
   media-postgres:
@@ -90,6 +110,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "media-postgres"  
 
   # MinIO for Media Service (NEW)
   minio:
@@ -112,6 +137,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: 
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "minio"  
 
   # Users Microservice (unchanged)
   users-service:
@@ -143,6 +173,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "users-service"  
 
   # Interactions Microservice (unchanged)
   interactions-service:
@@ -173,6 +208,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "interactions-service"  
 
   # Posts Microservice (UPDATED)
   posts-service:
@@ -206,6 +246,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "posts-service"  
 
   # Media Microservice (FIXED INDENTATION)
   media-service:
@@ -243,6 +288,77 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:  
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "media-service"  
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - kong-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Logstash - Procesa y envía logs a Elasticsearch
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+    ports:
+      - "5000:5000"
+      - "12201:12201/udp"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    networks:
+      - kong-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9600 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Kibana - Visualiza logs en dashboard web
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - kong-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 networks:
   kong-net:
@@ -254,3 +370,4 @@ volumes:
   posts_mongo_data:
   media_postgres_data:  # New volume for media PostgreSQL
   minio_data:  # New volume for MinIO
+  elasticsearch_data:
