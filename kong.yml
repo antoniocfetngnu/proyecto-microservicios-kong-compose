@@ -25,7 +25,7 @@ services:
               claims_to_verify:
                 - exp
               cookie_names:
-                - auth_token  
+                - auth_token
 
       # Protected user routes
       - name: users-routes
@@ -54,51 +54,12 @@ services:
               claims_to_verify:
                 - exp
               cookie_names:
-                - auth_token   
+                - auth_token
 
       # Protected GraphQL route
       - name: users-graphql-route
         paths:
           - /users-graphql
-        strip_path: false
-        plugins:
-          - name: jwt
-            config:
-              key_claim_name: kid
-              secret_is_base64: false
-              claims_to_verify:
-                - exp
-              cookie_names:
-                - auth_token
-          - name: request-transformer
-            config:
-              replace:
-                uri: /graphql
-
-
-
-  # Interactions Service (unchanged)
-  - name: interactions-service
-    url: http://interactions-service:3000
-    routes:
-      - name: interactions-api-routes
-        paths:
-          - /api/comments
-          - /api/comments/*
-        strip_path: false
-        plugins:
-          - name: jwt
-            config:
-              key_claim_name: kid
-              secret_is_base64: false
-              claims_to_verify:
-                - exp
-              cookie_names:
-                - auth_token
-
-      - name: interactions-graphql-route
-        paths:
-          - /interactions-graphql
         strip_path: false
         plugins:
           - name: jwt
@@ -188,16 +149,58 @@ services:
             config:
               replace:
                 uri: /api/docs
-
+  - name: interactions-service
+    url: http://interactions-service:3000
+    routes:
+      # Public interactions routes (for comment counts, etc.)
+      - name: interactions-public-routes
+        paths:
+          - /api/interactions/posts
+        strip_path: false
+        methods:
+          - GET
+      
+      # Protected interactions routes (for creating likes/comments)
+      - name: interactions-protected-routes  
+        paths:
+          - /api/interactions
+        strip_path: false
+        methods:
+          - POST
+          - PUT
+          - DELETE
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
   # Media Service (NEW)
   - name: media-service
     url: http://media-service:5000
     routes:
-      - name: media-api-routes
+      # Public media access routes (no JWT required for viewing)
+      - name: media-public-routes
         paths:
-          - /api/media
-          - /api/media/*
+          - /api/media/post/
+          - /api/media/batch
         strip_path: false
+        methods:
+          - GET
+          - POST
+
+      # Protected media management routes (JWT required for upload/delete)
+      - name: media-protected-routes
+        paths:
+          - /api/media/upload
+          - /api/media
+        strip_path: false
+        methods:
+          - POST
+          - DELETE
         plugins:
           - name: jwt
             config:
@@ -243,6 +246,13 @@ services:
             config:
               replace:
                 uri: /graphql
+
+      - name: media-health-route
+        paths:
+          - /api/media/health
+        strip_path: false
+        methods:
+          - GET
 
 consumers:
   - username: jwt-issuer
