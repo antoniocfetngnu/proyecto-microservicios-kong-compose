@@ -1,7 +1,7 @@
 _format_version: "3.0"
 
 services:
-  # Users Service (UPDATED)
+  # Users Service (unchanged)
   - name: users-service
     url: http://users-service:3001
     routes:
@@ -41,6 +41,7 @@ services:
                 - exp
               cookie_names:
                 - auth_token
+
       # Protected follower routes
       - name: followers-routes
         paths:
@@ -75,28 +76,99 @@ services:
               replace:
                 uri: /graphql
 
-  # Posts Service (FIXED - Split public and protected routes)
+  # Posts Service
   - name: posts-service
     url: http://posts-service:3000
     routes:
-      # Public routes (no JWT required) - View posts
-      - name: posts-public-view-routes
+      # ========== FEED ROUTES (NEW) ==========
+      # Public feed (no auth required)
+      - name: feed-public-route
+        paths:
+          - /api/feed/public
+        strip_path: false
+        methods:
+          - GET
+
+      # Trending feed (no auth required)
+      - name: feed-trending-route
+        paths:
+          - /api/feed/trending
+        strip_path: false
+        methods:
+          - GET
+
+      # Personalized feed (requires auth)
+      - name: feed-personalized-route
+        paths:
+          - /api/feed/personalized
+        strip_path: false
+        methods:
+          - GET
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      # Discover feed (requires auth)
+      - name: feed-discover-route
+        paths:
+          - /api/feed/discover
+        strip_path: false
+        methods:
+          - GET
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+
+      # ========== POSTS ROUTES ==========
+      # Public routes - Health check
+      - name: posts-health-route
         paths:
           - /api/posts/health
         strip_path: false
         methods:
           - GET
+          - HEAD
 
-      # Public GET for all posts and specific post (no auth needed to view)
-      - name: posts-public-get-routes
+      # Public GET for viewing posts (no auth needed)
+      - name: posts-public-get-all
         paths:
           - /api/posts
         strip_path: false
         methods:
           - GET
-        # Note: This will match /api/posts and /api/posts/:id but NOT /api/posts/my-posts
+        regex_priority: 1000
 
-      # Protected routes - My posts (require JWT)
+      # Public GET for viewing single post by ID - FIXED REGEX SYNTAX
+      - name: posts-public-get-by-id
+        paths:
+          - ~/^/api/posts/[^/]+$
+        strip_path: false
+        methods:
+          - GET
+        regex_priority: 900
+
+      # Public GET for posts by author - FIXED REGEX SYNTAX
+      - name: posts-public-get-by-author
+        paths:
+          - ~/^/api/posts/author/\d+$
+        strip_path: false
+        methods:
+          - GET
+        regex_priority: 800
+
+      # Protected my-posts route
       - name: posts-my-posts-route
         paths:
           - /api/posts/my-posts
@@ -112,14 +184,70 @@ services:
                 - exp
               cookie_names:
                 - auth_token
+        regex_priority: 950
 
-      # Protected routes - Create, Update, Delete (require JWT)
-      - name: posts-protected-write-routes
+      # Protected like/unlike routes (require JWT) - FIXED REGEX SYNTAX
+      - name: posts-like-routes
+        paths:
+          - ~/^/api/posts/[^/]+/like$
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - DELETE
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+        regex_priority: 700
+
+      # Protected comment routes (require JWT) - FIXED REGEX SYNTAX
+      - name: posts-comment-routes
+        paths:
+          - ~/^/api/posts/[^/]+/comments$
+        strip_path: false
+        methods:
+          - POST
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+        regex_priority: 600
+
+      # Protected routes - Create post
+      - name: posts-create-route
         paths:
           - /api/posts
         strip_path: false
         methods:
           - POST
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+        regex_priority: 500
+
+      # Protected routes - Update/Delete specific post - FIXED REGEX SYNTAX
+      - name: posts-update-delete-routes
+        paths:
+          - ~/^/api/posts/[^/]+$
+        strip_path: false
+        methods:
           - PUT
           - DELETE
         plugins:
@@ -131,6 +259,7 @@ services:
                 - exp
               cookie_names:
                 - auth_token
+        regex_priority: 400
 
       - name: posts-docs-route
         paths:
@@ -149,36 +278,8 @@ services:
             config:
               replace:
                 uri: /api/docs
-  - name: interactions-service
-    url: http://interactions-service:3000
-    routes:
-      # Public interactions routes (for comment counts, etc.)
-      - name: interactions-public-routes
-        paths:
-          - /api/interactions/posts
-        strip_path: false
-        methods:
-          - GET
-      
-      # Protected interactions routes (for creating likes/comments)
-      - name: interactions-protected-routes  
-        paths:
-          - /api/interactions
-        strip_path: false
-        methods:
-          - POST
-          - PUT
-          - DELETE
-        plugins:
-          - name: jwt
-            config:
-              key_claim_name: kid
-              secret_is_base64: false
-              claims_to_verify:
-                - exp
-              cookie_names:
-                - auth_token
-  # Media Service (NEW)
+
+  # Media Service (unchanged)
   - name: media-service
     url: http://media-service:5000
     routes:

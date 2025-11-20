@@ -33,7 +33,25 @@ services:
       options:
         gelf-address: "udp://localhost:12201"
         tag: "kong"  
-
+        
+  graphql-gateway:
+    build:
+      context: ./graphql-gateway
+      dockerfile: Dockerfile
+    container_name: graphql-gateway
+    environment:
+      PORT: "4000"
+    ports:
+      - "4000:4000"   # expone para testing local
+    networks:
+      - kong-net
+    depends_on:
+      - kong
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://localhost:12201"
+        tag: "graphql-gateway"
   # PostgreSQL Database (unchanged)
   postgres:
     image: postgres:15-alpine
@@ -248,6 +266,7 @@ services:
       MEDIA_SERVICE_URL: "http://media-service:5000"  
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672"
       INTERACTIONS_SERVICE_URL: "http://interactions-service:3000"
+      USERS_SERVICE_URL: "http://users-service:3001"
     networks:
       - kong-net
     depends_on:
