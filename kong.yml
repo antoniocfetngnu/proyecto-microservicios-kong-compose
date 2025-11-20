@@ -80,7 +80,7 @@ services:
   - name: posts-service
     url: http://posts-service:3000
     routes:
-      # ========== FEED ROUTES (NEW) ==========
+      # ========== FEED ROUTES ==========
       # Public feed (no auth required)
       - name: feed-public-route
         paths:
@@ -131,8 +131,8 @@ services:
               cookie_names:
                 - auth_token
 
-      # ========== POSTS ROUTES ==========
-      # Public routes - Health check
+      # ========== POSTS ROUTES (FIXED ORDER) ==========
+      # Health check
       - name: posts-health-route
         paths:
           - /api/posts/health
@@ -141,59 +141,12 @@ services:
           - GET
           - HEAD
 
-      # Public GET for viewing posts (no auth needed)
-      - name: posts-public-get-all
+      # CRITICAL: Unlike route MUST come BEFORE generic routes to match properly
+      - name: posts-unlike-routes
         paths:
-          - /api/posts
+          - ~/api/posts/[^/]+/unlike$
         strip_path: false
         methods:
-          - GET
-        regex_priority: 1000
-
-      # Public GET for viewing single post by ID - FIXED REGEX SYNTAX
-      - name: posts-public-get-by-id
-        paths:
-          - ~/^/api/posts/[^/]+$
-        strip_path: false
-        methods:
-          - GET
-        regex_priority: 900
-
-      # Public GET for posts by author - FIXED REGEX SYNTAX
-      - name: posts-public-get-by-author
-        paths:
-          - ~/^/api/posts/author/\d+$
-        strip_path: false
-        methods:
-          - GET
-        regex_priority: 800
-
-      # Protected my-posts route
-      - name: posts-my-posts-route
-        paths:
-          - /api/posts/my-posts
-        strip_path: false
-        methods:
-          - GET
-        plugins:
-          - name: jwt
-            config:
-              key_claim_name: kid
-              secret_is_base64: false
-              claims_to_verify:
-                - exp
-              cookie_names:
-                - auth_token
-        regex_priority: 950
-
-      # Protected like/unlike routes (require JWT) - FIXED REGEX SYNTAX
-      - name: posts-like-routes
-        paths:
-          - ~/^/api/posts/[^/]+/like$
-        strip_path: false
-        methods:
-          - GET
-          - POST
           - DELETE
         plugins:
           - name: jwt
@@ -204,12 +157,31 @@ services:
                 - exp
               cookie_names:
                 - auth_token
-        regex_priority: 700
+        regex_priority: 1100  # HIGHEST priority for unlike
 
-      # Protected comment routes (require JWT) - FIXED REGEX SYNTAX
+      # Like routes (GET and POST)
+      - name: posts-like-routes
+        paths:
+          - ~/api/posts/[^/]+/like$
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: kid
+              secret_is_base64: false
+              claims_to_verify:
+                - exp
+              cookie_names:
+                - auth_token
+        regex_priority: 1050  # High priority for like
+
+      # Comment routes
       - name: posts-comment-routes
         paths:
-          - ~/^/api/posts/[^/]+/comments$
+          - ~/api/posts/[^/]+/comments$
         strip_path: false
         methods:
           - POST
@@ -222,7 +194,25 @@ services:
                 - exp
               cookie_names:
                 - auth_token
-        regex_priority: 600
+        regex_priority: 1000
+
+      # Public GET for viewing all posts
+      - name: posts-public-get-all
+        paths:
+          - /api/posts
+        strip_path: false
+        methods:
+          - GET
+        regex_priority: 900
+
+      # Public GET for posts by author
+      - name: posts-public-get-by-author
+        paths:
+          - ~/api/posts/author/\d+$
+        strip_path: false
+        methods:
+          - GET
+        regex_priority: 850
 
       # Protected routes - Create post
       - name: posts-create-route
@@ -240,12 +230,12 @@ services:
                 - exp
               cookie_names:
                 - auth_token
-        regex_priority: 500
+        regex_priority: 800
 
-      # Protected routes - Update/Delete specific post - FIXED REGEX SYNTAX
+      # Protected routes - Update/Delete specific post
       - name: posts-update-delete-routes
         paths:
-          - ~/^/api/posts/[^/]+$
+          - ~/api/posts/[^/]+$
         strip_path: false
         methods:
           - PUT
@@ -259,7 +249,16 @@ services:
                 - exp
               cookie_names:
                 - auth_token
-        regex_priority: 400
+        regex_priority: 700
+
+      # Public GET for viewing single post by ID (LOWEST priority to avoid conflicts)
+      - name: posts-public-get-by-id
+        paths:
+          - ~/api/posts/[^/]+$
+        strip_path: false
+        methods:
+          - GET
+        regex_priority: 600  # Lower priority so specific routes match first
 
       - name: posts-docs-route
         paths:
